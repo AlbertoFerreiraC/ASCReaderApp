@@ -24,6 +24,14 @@ public class ASCReaderApp extends JFrame {
     private JButton loadFileButton;
     private JButton clearTableButton;
 
+    private JButton previousPageButton;
+    private JButton nextPageButton;
+    private JLabel pageInfoLabel;
+
+    private List<String[]> allRecords = new ArrayList<>();
+    private int currentPage = 0;
+    private final int RECORDS_PER_PAGE = 100;
+
     private String patientId = "";
     private String patientName = "";
     private String glucoseLimits = "";
@@ -75,7 +83,6 @@ public class ASCReaderApp extends JFrame {
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.getTableHeader().setReorderingAllowed(false);
 
-        // Configurar anchos de columnas
         dataTable.getColumnModel().getColumn(0).setPreferredWidth(80);  // Fecha
         dataTable.getColumnModel().getColumn(1).setPreferredWidth(60);  // Hora
         dataTable.getColumnModel().getColumn(2).setPreferredWidth(100); // Glucosa
@@ -88,13 +95,35 @@ public class ASCReaderApp extends JFrame {
         scrollPane.setBorder(BorderFactory.createTitledBorder("Registros Médicos"));
         add(scrollPane, BorderLayout.CENTER);
 
+        JPanel paginationPanel = new JPanel(new BorderLayout());
+
+        JPanel paginationControls = new JPanel(new FlowLayout(FlowLayout.CENTER));
+
+        previousPageButton = new JButton("← Anterior");
+        previousPageButton.addActionListener(e -> previousPage());
+        previousPageButton.setEnabled(false);
+        paginationControls.add(previousPageButton);
+
+        pageInfoLabel = new JLabel("Página 0 de 0 (0 registros)");
+        pageInfoLabel.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 20));
+        paginationControls.add(pageInfoLabel);
+
+        nextPageButton = new JButton("Siguiente →");
+        nextPageButton.addActionListener(e -> nextPage());
+        nextPageButton.setEnabled(false);
+        paginationControls.add(nextPageButton);
+
+        paginationPanel.add(paginationControls, BorderLayout.CENTER);
+
         statusLabel = new JLabel("Listo para cargar archivo");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        add(statusLabel, BorderLayout.SOUTH);
+        paginationPanel.add(statusLabel, BorderLayout.SOUTH);
 
-        setSize(900, 600);
+        add(paginationPanel, BorderLayout.SOUTH);
+
+        setSize(900, 650);
         setLocationRelativeTo(null);
-        setMinimumSize(new Dimension(800, 500));
+        setMinimumSize(new Dimension(800, 550));
     }
 
     private class LoadFileListener implements ActionListener {
@@ -116,17 +145,14 @@ public class ASCReaderApp extends JFrame {
         try {
             statusLabel.setText("Cargando archivo: " + file.getName());
 
-            tableModel.setRowCount(0);
-
-            List<String[]> records = parseASCFile(file);
-
-            for (String[] record : records) {
-                tableModel.addRow(record);
-            }
+            allRecords = parseASCFile(file);
+            currentPage = 0;
 
             updatePatientInfo();
 
-            statusLabel.setText("Archivo cargado exitosamente. " + records.size() + " registros encontrados.");
+            updateTableWithCurrentPage();
+
+            statusLabel.setText("Archivo cargado exitosamente. " + allRecords.size() + " registros encontrados.");
 
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this,
@@ -149,6 +175,7 @@ public class ASCReaderApp extends JFrame {
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
 
+                // Saltar líneas vacías
                 if (line.isEmpty()) {
                     continue;
                 }
@@ -192,12 +219,10 @@ public class ASCReaderApp extends JFrame {
                 return null;
             }
 
-            // Parsear fecha (YYMMDD)
             String dateStr = parts[0];
             Date date = inputDateFormat.parse(dateStr);
             String formattedDate = outputDateFormat.format(date);
 
-            // Parsear hora (HHMM)
             String timeStr = parts[1];
             String formattedTime = timeStr.substring(0, 2) + ":" + timeStr.substring(2, 4);
 
@@ -257,17 +282,69 @@ public class ASCReaderApp extends JFrame {
     }
 
     private void clearAllData() {
-        // Limpiar tabla
+        allRecords.clear();
+        currentPage = 0;
         tableModel.setRowCount(0);
 
-        // Resetear datos del paciente
         patientId = "";
         patientName = "";
         glucoseLimits = "";
 
-        // Actualizar interfaz
         patientInfoLabel.setText("No hay archivo cargado");
         statusLabel.setText("Tabla limpiada - Listo para cargar archivo");
+        updatePaginationControls();
+    }
+
+    private void updateTableWithCurrentPage() {
+        tableModel.setRowCount(0);
+
+        if (allRecords.isEmpty()) {
+            updatePaginationControls();
+            return;
+        }
+
+        int startIndex = currentPage * RECORDS_PER_PAGE;
+        int endIndex = Math.min(startIndex + RECORDS_PER_PAGE, allRecords.size());
+
+        for (int i = startIndex; i < endIndex; i++) {
+            tableModel.addRow(allRecords.get(i));
+        }
+
+        updatePaginationControls();
+    }
+
+    private void updatePaginationControls() {
+        int totalPages = (int) Math.ceil((double) allRecords.size() / RECORDS_PER_PAGE);
+
+        if (totalPages == 0) {
+            pageInfoLabel.setText("Página 0 de 0 (0 registros)");
+            previousPageButton.setEnabled(false);
+            nextPageButton.setEnabled(false);
+        } else {
+            int startRecord = currentPage * RECORDS_PER_PAGE + 1;
+            int endRecord = Math.min((currentPage + 1) * RECORDS_PER_PAGE, allRecords.size());
+
+            pageInfoLabel.setText(String.format("Página %d de %d (%d-%d de %d registros)",
+                    currentPage + 1, totalPages, startRecord, endRecord, allRecords.size()));
+
+            previousPageButton.setEnabled(currentPage > 0);
+            nextPageButton.setEnabled(currentPage < totalPages - 1);
+        }
+    }
+
+    private void previousPage() {
+        if (currentPage > 0) {
+            currentPage--;
+            updateTableWithCurrentPage();
+        }
+    }
+
+    private void nextPage() {
+        int totalPages = (int) Math.ceil((double) allRecords.size() / RECORDS_PER_PAGE);
+        if (currentPage < totalPages - 1) {
+            currentPage++;
+            updateTableWithCurrentPage();
+        }
     }
 
     public static void main(String[] args) {
